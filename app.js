@@ -1,105 +1,127 @@
-from flask import Flask, render_template, request, jsonify, session
-from backend.db_manager import DatabaseManager
-from backend.logic_distributor import AdvancedTaskDistributor
-from backend.ai_assistant import AdvancedAI_Assistant
-import logging
-import uuid
-import os
+/**
+ * Smart Life Architect - Frontend Core Engine
+ * نظام إدارة التفاعل، الرسوم البيانية، والربط مع السيرفر
+ */
 
-# إعداد التطبيق
-app = Flask(__name__)
-app.secret_key = os.urandom(24)  # مفتاح أمان للجلسات
+// 1. إعدادات النظام والمتغيرات العامة
+const API_BASE_URL = "http://127.0.0.1:5000/api";
+let dailyChart = null;
 
-# تهيئة المكونات الأساسية
-db = DatabaseManager()
-ai = AdvancedAI_Assistant()
+// الانتظار حتى تحميل الصفحة بالكامل
+document.addEventListener('DOMContentLoaded', () => {
+    console.log("System Initialized...");
+    initCharts();
+    loadDashboardData();
+    setupEventListeners();
+});
 
-# إعداد الـ Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("Flask_Server")
-
-# --- Routes (نقاط التواصل) ---
-
-@app.route('/')
-def home():
-    """الصفحة الرئيسية للتطبيق"""
-    return render_template('index.html')
-
-@app.route('/api/generate_schedule', methods=['POST'])
-def generate_schedule():
-    """توليد جدول الـ 30 يوم من الأهداف المدخلة"""
-    try:
-        data = request.json
-        goals = data.get('goals', [])
-        constraints = data.get('constraints', {"work_hours_limit": 8})
-        
-        # استخدام الموزع المتقدم
-        distributor = AdvancedTaskDistributor(goals, constraints)
-        full_schedule = distributor.distribute()
-        
-        if full_schedule:
-            # حفظ الأهداف والمهام في قاعدة البيانات
-            for day, tasks in full_schedule.items():
-                for t in tasks:
-                    db.add_monthly_goal(t['task_name'], t['priority'])
-            
-            return jsonify({
-                "status": "success",
-                "message": "تم إنشاء الجدول بنجاح",
-                "analytics": distributor.get_efficiency_report()
-            }), 200
-        else:
-            return jsonify({"status": "error", "message": "فشل التوزيع، الخطة غير واقعية"}), 400
-    except Exception as e:
-        logger.error(f"خطأ في توليد الجدول: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/api/chat', methods=['POST'])
-def chat():
-    """التواصل مع الشات بوت"""
-    try:
-        user_data = request.json
-        user_input = user_data.get('message', '')
-        user_id = session.get('user_id', 'Guest')
-        
-        # جلب الرد من مساعد الـ AI
-        bot_response = ai.get_response(user_input)
-        intent = ai._detect_intent(user_input)
-        
-        # حفظ المحادثة في الذاكرة طويلة الأمد
-        db.save_chat(user_input, bot_response, intent)
-        
-        return jsonify({
-            "status": "success",
-            "reply": bot_response,
-            "intent": intent
-        }), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": "المساعد يواجه صعوبة حالياً"}), 500
-
-@app.route('/api/stats', methods=['GET'])
-def get_stats():
-    """جلب الإحصائيات لتحديث الدوائر في الواجهة"""
-    stats = db.get_analytics()
-    return jsonify(stats)
-
-@app.route('/api/update_task', methods=['PATCH'])
-def update_task():
-    """تحديث حالة مهمة (إنجاز/تأجيل)"""
-    data = request.json
-    task_id = data.get('task_id')
-    new_status = data.get('status')
+// 2. إدارة الرسوم البيانية (Charts)
+function initCharts() {
+    const ctx = document.getElementById('dailyChart').getContext('2d');
     
-    success = db.update_task_status(task_id, new_status)
-    if success:
-        return jsonify({"status": "success", "new_progress": db.get_analytics()['success_rate']})
-    return jsonify({"status": "error"}), 400
+    // استخدام مكتبة Chart.js لرسم مهام اليوم
+    dailyChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['منجز', 'متبقي', 'متأخر'],
+            datasets: [{
+                data: [0, 100, 0],
+                backgroundColor: ['#4facfe', '#16213e', '#ff4b2b'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            cutout: '80%',
+            responsive: true,
+            plugins: { legend: { display: false } }
+        }
+    });
+}
 
-# --- Error Handlers ---
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({"error": "المسار غير موجود"}), 404
+// 3. التعامل مع السيرفر (Fetch API)
+async function fetchData(endpoint, method = 'GET', body = null) {
+    try {
+        const options = {
+            method,
+            headers: { 'Content-Type': 'application/json' }
+        };
+        if (body) options.body = JSON.stringify(body);
 
-if __name__ == '__main__':
-    # تشغيل السيرفر على الديباج مود للتطوير
-    app.run(debug=True, port=5000)
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+        return await response.json();
+    } catch (error) {
+        showNotification("خطأ في الاتصال بالسيرفر", "error");
+        console.error("API Error:", error);
+    }
+}
+
+// 4. منطق الشات بوت (Advanced Chat)
+async function sendMessage() {
+    const userInput = document.getElementById('userInput');
+    const message = userInput.value.trim();
+    
+    if (!message) return;
+
+    // إضافة رسالة المستخدم للواجهة
+    appendMessage('user', message);
+    userInput.value = '';
+
+    // إرسال الطلب للسيرفر (البايثون)
+    const data = await fetchData('/chat', 'POST', { message });
+    
+    if (data && data.status === 'success') {
+        appendMessage('bot', data.reply);
+        // تحديث الواجهة لو الرد فيه تغيير للجدول
+        if (data.intent === 'achievement') loadDashboardData();
+    }
+}
+
+function appendMessage(sender, text) {
+    const chatBox = document.getElementById('chatBox');
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `message ${sender}-msg fade-in`;
+    msgDiv.innerHTML = `<strong>${sender === 'user' ? 'أنت' : 'المساعد'}:</strong> ${text}`;
+    chatBox.appendChild(msgDiv);
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+// 5. إدارة جدول الـ 30 يوم
+async function loadDashboardData() {
+    const stats = await fetchData('/stats');
+    if (stats) {
+        updateProgressUI(stats.success_rate);
+        updateChartData(stats.completed_tasks, stats.total_tasks - stats.completed_tasks);
+    }
+}
+
+function updateProgressUI(percentage) {
+    const circle = document.getElementById('monthlyProgress');
+    let current = 0;
+    const interval = setInterval(() => {
+        if (current >= percentage) clearInterval(interval);
+        circle.innerText = `${current}%`;
+        current++;
+    }, 20);
+}
+
+function updateChartData(done, pending) {
+    dailyChart.data.datasets[0].data = [done, pending, 0];
+    dailyChart.update();
+}
+
+// 6. التنبيهات والتحسينات البصرية
+function showNotification(text, type) {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerText = text;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+
+function setupEventListeners() {
+    // إرسال الرسالة عند الضغط على Enter
+    document.getElementById('userInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendMessage();
+    });
+}
