@@ -3,41 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Life Architect | منظم حياتك الذكي</title>
+    <title>Smart Life Architect | المخطط الذكي</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
     <div class="container">
-        <header class="dashboard">
-            <div class="stat-card">
-                <h3>إنجاز الشهر</h3>
-                <div class="circle-progress" id="monthlyProgress">0%</div>
-            </div>
-            <div class="stat-card">
-                <h3>مهام اليوم</h3>
-                <canvas id="dailyChart"></canvas>
-            </div>
-        </header>
+        <main class="main-content">
+            <header class="dashboard-header">
+                <div class="glass-card stat-item">
+                    <div class="stat-info">
+                        <h3>إنجاز الشهر</h3>
+                        <p class="text-dim">نسبة تحقيق الأهداف الكبرى</p>
+                    </div>
+                    <div class="circle-container">
+                        <div id="monthlyProgress">0%</div>
+                    </div>
+                </div>
 
-        <main class="content-area">
-            <section class="schedule-section">
-                <h2>جدول الـ 30 يوم</h2>
-                <div id="calendarGrid" class="grid-container">
+                <div class="glass-card stat-item">
+                    <div class="stat-info">
+                        <h3>توزيع طاقة اليوم</h3>
+                        <p class="text-dim">تحليل الضغط العصبي والبدني</p>
+                    </div>
+                    <canvas id="dailyChart" width="150" height="150"></canvas>
+                </div>
+            </header>
+
+            <section class="schedule-explorer">
+                <div class="section-header">
+                    <h2><i class="fa-solid fa-calendar-days"></i> خريطة الـ 30 يوم</h2>
+                    <div class="filters">
+                        <button class="btn-filter active">الكل</button>
+                        <button class="btn-filter">المهام الصعبة</button>
+                    </div>
+                </div>
+                
+                <div id="calendarGrid" class="calendar-grid">
                     </div>
             </section>
-
-            <aside class="chatbot-ui">
-                <div class="chat-header">المساعد الذكي</div>
-                <div id="chatBox" class="chat-messages">
-                    <p class="bot-msg">أهلاً بك! أنا مدربك الشخصي، إيه خطتنا النهاردة؟</p>
-                </div>
-                <div class="chat-input">
-                    <input type="text" id="userInput" placeholder="اسأل المساعد...">
-                    <button onclick="sendMessage()">إرسال</button>
-                </div>
-            </aside>
         </main>
+
+        <aside class="chatbot-container glass-card">
+            <div class="chat-header">
+                <div class="bot-avatar">
+                    <i class="fa-solid fa-robot"></i>
+                    <span class="status-dot"></span>
+                </div>
+                <div class="bot-title">
+                    <h4>أرتشي (Archi)</h4>
+                    <p>مساعدك الذكي متصل الآن</p>
+                </div>
+            </div>
+
+            <div id="chatBox" class="chat-messages">
+                <div class="message bot-msg">
+                    أهلاً بك يا بطل! أنا جاهز لتحليل أهدافك الـ 30. إيه اللي في دماغك النهاردة؟
+                </div>
+            </div>
+
+            <div class="chat-input-area">
+                <input type="text" id="userInput" placeholder="اكتب رسالتك هنا..." autocomplete="off">
+                <button onclick="sendMessage()" id="sendBtn">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </div>
+        </aside>
     </div>
 
     <script src="app.js"></script>
