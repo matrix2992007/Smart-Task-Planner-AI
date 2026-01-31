@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Life Architect | منظم حياتك الذكي</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+        <header class="dashboard">
+            <div class="stat-card">
+                <h3>إنجاز الشهر</h3>
+                <div class="circle-progress" id="monthlyProgress">0%</div>
+            </div>
+            <div class="stat-card">
+                <h3>مهام اليوم</h3>
+                <canvas id="dailyChart"></canvas>
+            </div>
+        </header>
+
+        <main class="content-area">
+            <section class="schedule-section">
+                <h2>جدول الـ 30 يوم</h2>
+                <div id="calendarGrid" class="grid-container">
+                    </div>
+            </section>
+
+            <aside class="chatbot-ui">
+                <div class="chat-header">المساعد الذكي</div>
+                <div id="chatBox" class="chat-messages">
+                    <p class="bot-msg">أهلاً بك! أنا مدربك الشخصي، إيه خطتنا النهاردة؟</p>
+                </div>
+                <div class="chat-input">
+                    <input type="text" id="userInput" placeholder="اسأل المساعد...">
+                    <button onclick="sendMessage()">إرسال</button>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
