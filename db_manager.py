@@ -1,49 +1,146 @@
 import sqlite3
+import logging
+import os
+from datetime import datetime
+from threading import Lock
+
+# إعداد الـ Logging الاحترافي
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("DB_Manager")
 
 class DatabaseManager:
-    def __init__(self, db_name="planner_system.db"):
-        self.conn = sqlite3.connect(db_name)
-        self.cursor = self.conn.cursor()
-        self.create_tables()
+    """
+    نظام إدارة قواعد البيانات المتقدم (Thread-Safe)
+    يعتمد على معايير ACID لضمان سلامة البيانات.
+    """
+    def __init__(self, db_path="planner_system.db"):
+        self.db_path = db_path
+        self._lock = Lock()  # لضمان عدم حدوث تداخل عند تعدد المهام
+        self._initialize_database()
 
-    def create_tables(self):
-        # إنشاء جدول المهام
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                day_number INTEGER,
-                task_name TEXT,
-                task_type TEXT, -- 'fixed' أو 'dynamic'
-                status TEXT DEFAULT 'pending'
-            )
-        ''')
-        # إنشاء جدول لحفظ أهداف الشهر الأساسية
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS monthly_goals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                goal_name TEXT
-            )
-        ''')
-        self.conn.commit()
+    def _get_connection(self):
+        """فتح اتصال آمن مع دعم الـ Foreign Keys"""
+        conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
 
-    def save_schedule(self, schedule):
-        """حفظ الجدول الكامل اللي طالع من الـ logic_distributor"""
-        for day, content in schedule.items():
-            day_num = int(day.split()[1])
-            # حفظ المهام الثابتة (صلاة، جيم)
-            for f_task in content['Fixed']:
-                self.cursor.execute("INSERT INTO tasks (day_number, task_name, task_type) VALUES (?, ?, ?)", 
-                                    (day_num, f_task, 'fixed'))
-            # حفظ المهام المتغيرة
-            for d_task in content['Dynamic_Tasks']:
-                self.cursor.execute("INSERT INTO tasks (day_number, task_name, task_type) VALUES (?, ?, ?)", 
-                                    (day_num, d_task, 'dynamic'))
-        self.conn.commit()
+    def _initialize_database(self):
+        """إنشاء الجداول بنظام العلاقات (Normalization)"""
+        with self._lock:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            
+            # 1. جدول أهداف الشهر الكبرى
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS monthly_goals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    goal_name TEXT NOT NULL,
+                    priority INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
 
-    def get_day_tasks(self, day_num):
-        """جلب مهام يوم معين للعرض في التطبيق"""
-        self.cursor.execute("SELECT task_name, task_type, status FROM tasks WHERE day_number = ?", (day_num,))
-        return self.cursor.fetchall()
+            # 2. جدول المهام اليومية (مربوط بالأهداف)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS daily_tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    goal_id INTEGER,
+                    day_number INTEGER NOT NULL,
+                    task_description TEXT NOT NULL,
+                    task_type TEXT CHECK(task_type IN ('fixed', 'dynamic')),
+                    status TEXT DEFAULT 'pending',
+                    completed_at TIMESTAMP,
+                    FOREIGN KEY (goal_id) REFERENCES monthly_goals(id) ON DELETE CASCADE
+                )
+            ''')
 
-    def close(self):
-        self.conn.close()
+            # 3. جدول سجل المحادثات (لبناء ذاكرة الشات بوت)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS chat_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_input TEXT,
+                    bot_response TEXT,
+                    intent TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            conn.commit()
+            conn.close()
+            logger.info("تم تهيئة قاعدة البيانات بنجاح.")
+
+    def add_monthly_goal(self, name, priority):
+        """إضافة هدف جديد مع نظام أمان ضد SQL Injection"""
+        try:
+            with self._lock:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute("INSERT INTO monthly_goals (goal_name, priority) VALUES (?, ?)", (name, priority))
+                goal_id = cursor.lastrowid
+                conn.commit()
+                conn.close()
+                return goal_id
+        except Exception as e:
+            logger.error(f"خطأ في إضافة الهدف: {e}")
+            return None
+
+    def update_task_status(self, task_id, status):
+        """تحديث حالة المهمة وتسجيل وقت الإنجاز"""
+        completion_time = datetime.now() if status == 'done' else None
+        try:
+            with self._lock:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE daily_tasks 
+                    SET status = ?, completed_at = ? 
+                    WHERE id = ?
+                ''', (status, completion_time, task_id))
+                conn.commit()
+                conn.close()
+                return True
+        except Exception as e:
+            logger.error(f"خطأ في تحديث المهمة: {e}")
+            return False
+
+    def get_analytics(self):
+        """وظيفة احترافية لحساب الإحصائيات (الدوائر في الـ Frontend)"""
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            
+            # حساب الإنجاز الكلي
+            cursor.execute("SELECT COUNT(*) FROM daily_tasks")
+            total = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM daily_tasks WHERE status = 'done'")
+            done = cursor.fetchone()[0]
+            
+            percentage = (done / total * 100) if total > 0 else 0
+            
+            conn.close()
+            return {
+                "total_tasks": total,
+                "completed_tasks": done,
+                "success_rate": round(percentage, 2)
+            }
+        except Exception as e:
+            logger.error(f"خطأ في جلب الإحصائيات: {e}")
+            return {"success_rate": 0}
+
+    def save_chat(self, user_msg, bot_msg, intent):
+        """حفظ المحادثة لتدريب الـ AI مستقبلاً"""
+        with self._lock:
+            conn = self._get_connection()
+            conn.execute("INSERT INTO chat_history (user_input, bot_response, intent) VALUES (?, ?, ?)",
+                         (user_msg, bot_msg, intent))
+            conn.commit()
+            conn.close()
+
+# --- تجربة النظام ---
+if __name__ == "__main__":
+    db = DatabaseManager()
+    gid = db.add_monthly_goal("تعلم البرمجة المتقدمة", 5)
+    print(f"تم إنشاء هدف برقم: {gid}")
+    stats = db.get_analytics()
+    print(f"معدل الإنجاز الحالي: {stats['success_rate']}%")
